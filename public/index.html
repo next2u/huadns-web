@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HuaDNS - 三网 DNS 检测</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 720px; margin: 0 auto; }
+    h1 {
+      text-align: center;
+      font-size: 1.8rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle { text-align: center; color: #64748b; margin-bottom: 2rem; font-size: 0.9rem; }
+    .input-group {
+      display: flex; gap: 0.5rem; margin-bottom: 1.5rem;
+    }
+    .input-group input {
+      flex: 1; padding: 0.75rem 1rem;
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      color: #f1f5f9; font-size: 1rem; outline: none; transition: border-color 0.2s;
+    }
+    .input-group input:focus { border-color: #38bdf8; }
+    .input-group input::placeholder { color: #475569; }
+    .btn {
+      padding: 0.75rem 1.5rem; border: none; border-radius: 8px;
+      font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #334155; color: #64748b; cursor: not-allowed; }
+    .btn-copy {
+      background: #10b981; color: #fff; padding: 0.5rem 1rem; font-size: 0.85rem;
+    }
+    .btn-copy:hover { background: #059669; }
+    .btn-copy.copied { background: #6366f1; }
+
+    .status {
+      padding: 1rem; margin-bottom: 1rem; border-radius: 8px;
+      background: #1e293b; border: 1px solid #334155;
+      font-size: 0.9rem; line-height: 1.8; display: none;
+    }
+    .status.visible { display: block; }
+    .status .step { color: #94a3b8; }
+    .status .ok { color: #4ade80; }
+    .status .err { color: #f87171; }
+
+    .results { display: none; margin-top: 1.5rem; }
+    .results.visible { display: block; }
+    .results h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #94a3b8; }
+
+    .ip-list { list-style: none; }
+    .ip-item {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0.75rem 1rem; margin-bottom: 0.5rem;
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .ip-item:hover { border-color: #38bdf8; background: #1e3a5f; }
+    .ip-item.selected { border-color: #38bdf8; background: #172554; box-shadow: 0 0 0 1px #38bdf8; }
+    .ip-item .idx {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: #334155; display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    }
+    .ip-item.selected .idx { background: #3b82f6; }
+    .ip-item .ip { font-family: 'JetBrains Mono', monospace; font-weight: 600; min-width: 130px; }
+    .ip-item .info { color: #94a3b8; font-size: 0.85rem; flex: 1; }
+    .ip-item .carrier {
+      font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px;
+      background: #312e81; color: #a5b4fc; white-space: nowrap;
+    }
+
+    .output-section {
+      margin-top: 1.5rem; padding: 1.25rem;
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      display: none;
+    }
+    .output-section.visible { display: block; }
+    .output-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 0.75rem;
+    }
+    .output-header h3 { font-size: 0.95rem; color: #94a3b8; }
+    .output-code {
+      background: #0f172a; border-radius: 6px; padding: 1rem;
+      font-family: 'JetBrains Mono', monospace; font-size: 0.9rem;
+      white-space: pre-wrap; word-break: break-all; color: #a5f3fc;
+      border: 1px solid #1e3a5f;
+    }
+
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #475569; border-top-color: #38bdf8;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      vertical-align: middle; margin-right: 0.4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .toast {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%) translateY(100px);
+      background: #10b981; color: #fff; padding: 0.75rem 1.5rem;
+      border-radius: 8px; font-weight: 600; transition: transform 0.3s ease;
+      z-index: 999;
+    }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>HuaDNS</h1>
+    <p class="subtitle">三网 DNS 解析检测 · 电信 / 联通 / 移动</p>
+
+    <div class="input-group">
+      <input type="text" id="domainInput" placeholder="输入域名，如 example.com" autofocus>
+      <button class="btn btn-primary" id="checkBtn" onclick="startCheck()">检测</button>
+    </div>
+
+    <div class="status" id="statusBox"></div>
+
+    <div class="results" id="resultsBox">
+      <h2 id="resultsTitle"></h2>
+      <ul class="ip-list" id="ipList"></ul>
+    </div>
+
+    <div class="output-section" id="outputSection">
+      <div class="output-header">
+        <h3>Clash 覆写配置</h3>
+        <button class="btn btn-copy" id="copyBtn" onclick="copyConfig()">复制配置</button>
+      </div>
+      <div class="output-code" id="outputCode"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">已复制到剪贴板</div>
+
+  <script>
+    let currentDomain = '';
+    let selectedIP = '';
+
+    // Enter 键触发检测
+    document.getElementById('domainInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') startCheck();
+    });
+
+    function setStatus(html) {
+      const box = document.getElementById('statusBox');
+      box.innerHTML = html;
+      box.classList.add('visible');
+    }
+
+    function appendStatus(html) {
+      document.getElementById('statusBox').innerHTML += html;
+    }
+
+    async function startCheck() {
+      const domain = document.getElementById('domainInput').value.trim();
+      if (!domain) return;
+
+      const btn = document.getElementById('checkBtn');
+      btn.disabled = true;
+      btn.textContent = '检测中...';
+
+      document.getElementById('resultsBox').classList.remove('visible');
+      document.getElementById('outputSection').classList.remove('visible');
+      selectedIP = '';
+
+      try {
+        // Step 1: DNS 测量
+        setStatus('<div class="step"><span class="spinner"></span>[1/2] 提交三网 DNS 测量任务并等待结果（约 10-30 秒）...</div>');
+
+        const dnsResp = await fetch('/api/dns', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ domain }),
+        });
+
+        const dnsData = await dnsResp.json();
+
+        if (!dnsResp.ok) {
+          throw new Error(dnsData.error || '检测失败');
+        }
+
+        currentDomain = dnsData.domain;
+        appendStatus(`<div class="ok">✓ DNS 解析完成，发现 ${dnsData.uniqueIPs.length} 个不同 IP</div>`);
+
+        // Step 2: IP 归属地
+        appendStatus('<div class="step"><span class="spinner"></span>[2/2] 查询 IP 归属地...</div>');
+
+        const ipResp = await fetch('/api/ipinfo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ips: dnsData.uniqueIPs }),
+        });
+
+        const ipData = await ipResp.json();
+        appendStatus('<div class="ok">✓ IP 归属地查询完成</div>');
+
+        // 渲染结果
+        renderResults(dnsData, ipData.results || {});
+
+      } catch (err) {
+        appendStatus(`<div class="err">✗ ${err.message}</div>`);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '检测';
+      }
+    }
+
+    function renderResults(dnsData, ipInfos) {
+      const { uniqueIPs, ipCarriers } = dnsData;
+      const list = document.getElementById('ipList');
+      list.innerHTML = '';
+
+      document.getElementById('resultsTitle').textContent =
+        `解析结果（共 ${uniqueIPs.length} 个不同 IP）- 点击选择`;
+
+      uniqueIPs.forEach((ip, idx) => {
+        const info = ipInfos[ip] || {};
+        const carriers = (ipCarriers[ip] || []).join('/');
+        const location = info.error
+          ? `查询失败 (${info.error})`
+          : [info.country, info.city].filter(Boolean).join(' ') || '未知';
+        const detail = info.error ? '' : `${info.isp || ''} ${info.as || ''}`.trim();
+
+        const li = document.createElement('li');
+        li.className = 'ip-item';
+        li.dataset.ip = ip;
+        li.innerHTML = `
+          <span class="idx">${idx + 1}</span>
+          <span class="ip">${ip}</span>
+          <span class="info">${location}${detail ? ' · ' + detail : ''}</span>
+          <span class="carrier">${carriers}</span>
+        `;
+        li.addEventListener('click', () => selectIP(ip, li));
+        list.appendChild(li);
+      });
+
+      document.getElementById('resultsBox').classList.add('visible');
+    }
+
+    function selectIP(ip, el) {
+      document.querySelectorAll('.ip-item').forEach(item => item.classList.remove('selected'));
+      el.classList.add('selected');
+      selectedIP = ip;
+
+      const config = `hosts:\n  ${currentDomain}: ${ip}\n`;
+      document.getElementById('outputCode').textContent = config;
+      document.getElementById('outputSection').classList.add('visible');
+
+      // 重置复制按钮状态
+      const copyBtn = document.getElementById('copyBtn');
+      copyBtn.textContent = '复制配置';
+      copyBtn.classList.remove('copied');
+    }
+
+    async function copyConfig() {
+      const config = document.getElementById('outputCode').textContent;
+      if (!config) return;
+
+      try {
+        await navigator.clipboard.writeText(config);
+        showToast();
+        const btn = document.getElementById('copyBtn');
+        btn.textContent = '已复制 ✓';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '复制配置';
+          btn.classList.remove('copied');
+        }, 2000);
+      } catch {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = config;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        showToast();
+      }
+    }
+
+    function showToast() {
+      const toast = document.getElementById('toast');
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    }
+  </script>
+</body>
+</html>
